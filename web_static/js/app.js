@@ -387,52 +387,60 @@ function updateThreatData() {
                         }
                     });
                     
-                    // Eğer hiç IP adresi alınamazsa ve şimdi veri yoksa, varsayılan veriler oluştur
+                    // Eğer hiç IP adresi alınamazsa ve şimdi veri yoksa, son alarmları kontrol et
                     if (Object.keys(uniqueIps).length === 0 && Object.keys(window.threatTimeStamps).length === 0) {
-                        // DNS tehditleri
-                        if (dnsData.suspicious_entropy_queries > 0 || 
-                            dnsData.long_subdomain_queries > 0 || 
-                            dnsData.many_labels_queries > 0) {
+                        // Önce alarmların gerçekten var olup olmadığını kontrol et
+                        if ((alertData.dns_alerts && alertData.dns_alerts.length > 0) || 
+                            (alertData.icmp_alerts && alertData.icmp_alerts.length > 0)) {
                             
-                            const dummyIp = '192.168.1.10';
-                            window.threatTimeStamps[dummyIp] = {
-                                firstSeen: now,
-                                lastSeen: now,
-                                type: 'dns'
-                            };
+                            // DNS tehditleri için alarmlardan kaynak IP'yi al
+                            if (alertData.dns_alerts && alertData.dns_alerts.length > 0) {
+                                const lastDnsAlert = alertData.dns_alerts[0]; // En son DNS alarmı
+                                if (lastDnsAlert.src_ip) {
+                                    const srcIp = lastDnsAlert.src_ip.trim();
+                                    window.threatTimeStamps[srcIp] = {
+                                        firstSeen: now,
+                                        lastSeen: now,
+                                        type: 'dns'
+                                    };
+                                    
+                                    uniqueIps[srcIp] = {
+                                        type: 'threat',
+                                        time: lastDnsAlert.timestamp || new Date().toLocaleTimeString(),
+                                        count: 1
+                                    };
+                                    
+                                    // Alarm detayını kaydet
+                                    if (!window.dnsThreatDetails) window.dnsThreatDetails = {};
+                                    window.dnsThreatDetails[srcIp] = lastDnsAlert.subdomain || lastDnsAlert.message || "";
+                                    
+                                    console.log("DNS alarmından kaynak IP kullanıldı:", srcIp);
+                                }
+                            }
                             
-                            uniqueIps[dummyIp] = {
-                                type: 'threat',
-                                time: new Date().toLocaleTimeString(),
-                                count: Math.max(
-                                    dnsData.suspicious_entropy_queries, 
-                                    dnsData.long_subdomain_queries, 
-                                    dnsData.many_labels_queries
-                                )
-                            };
-                        }
-                        
-                        // ICMP tehditleri
-                        if (icmpData.large_payload_packets > 0 || 
-                            icmpData.abnormal_echo_ratio_count > 0 || 
-                            icmpData.high_frequency_count > 0) {
-                            
-                            const dummyIp = '192.168.1.20';
-                            window.threatTimeStamps[dummyIp] = {
-                                firstSeen: now,
-                                lastSeen: now,
-                                type: 'icmp'
-                            };
-                            
-                            uniqueIps[dummyIp] = {
-                                type: 'threat',
-                                time: new Date().toLocaleTimeString(),
-                                count: Math.max(
-                                    icmpData.large_payload_packets,
-                                    icmpData.abnormal_echo_ratio_count,
-                                    icmpData.high_frequency_count
-                                )
-                            };
+                            // ICMP tehditleri için alarmlardan kaynak IP'yi al
+                            if (alertData.icmp_alerts && alertData.icmp_alerts.length > 0) {
+                                const lastIcmpAlert = alertData.icmp_alerts[0]; // En son ICMP alarmı
+                                if (lastIcmpAlert.src_ip) {
+                                    const srcIp = lastIcmpAlert.src_ip.trim();
+                                    window.threatTimeStamps[srcIp] = {
+                                        firstSeen: now,
+                                        lastSeen: now,
+                                        type: 'icmp'
+                                    };
+                                    
+                                    uniqueIps[srcIp] = {
+                                        type: 'threat',
+                                        time: lastIcmpAlert.timestamp || new Date().toLocaleTimeString(),
+                                        count: 1
+                                    };
+                                    
+                                    console.log("ICMP alarmından kaynak IP kullanıldı:", srcIp);
+                                }
+                            }
+                        } else {
+                            // Eğer hiç alarm verisi yoksa ve istatistikler varsa...
+                            console.warn("Hiç alarm verisi bulunamadı, ancak istatistik verileri mevcut. Gerçek IP'ler gösterilemeyecek.");
                         }
                     }
                     
@@ -534,14 +542,9 @@ function updateThreatList() {
         // Tehdit zaman bilgisini oluştur
         const threatTime = new Date(threat.lastSeen).toLocaleString();
         
-        let dnsDetail = "";
-        if (threat.type === 'dns' && window.dnsThreatDetails && window.dnsThreatDetails[threat.ip]) {
-            dnsDetail = `<div class="threat-detail" style="color:#2980b9;font-size:12px;">${window.dnsThreatDetails[threat.ip]}</div>`;
-        }
-        
+        // DNS detaylarını artık tehdit listesinde gösterme - sadece IP adresini göster
         threatItem.innerHTML = `
             <div class="threat-ip">${typeLabel} ${threat.ip}</div>
-            ${dnsDetail}
             <div class="threat-time">${threatTime}</div>
         `;
         
