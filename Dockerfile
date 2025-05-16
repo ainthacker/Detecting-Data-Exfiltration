@@ -27,4 +27,4 @@ RUN chown -R appuser:appuser /app
 USER appuser
 
 # Command can be overridden by docker-compose
-CMD ["python", "data_exfil_detector.py"] 
+CMD ["python", "fast_app.py"] 

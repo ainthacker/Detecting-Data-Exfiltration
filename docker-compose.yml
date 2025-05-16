@@ -1,48 +1,20 @@
 version: '3'
 
 services:
-  # Base detector service (shared volume for data)
-  detector:
+  app:
     build: .
-    container_name: exfil-detector
-    network_mode: "host"  # Required to capture packets from host network
+    container_name: exfiltration-app
+    ports:
+      - "8080:8080"
     volumes:
       - ./logs:/app/logs
       - ./pcap:/app/pcap
       - shared-data:/app/data
-    command: python data_exfil_detector.py --log /app/logs/detector.log
+    command: python fast_app.py --host 0.0.0.0 --port 8080
     cap_add:
       - NET_ADMIN
       - NET_RAW
     restart: unless-stopped
 
-  # Web UI service
-  web:
-    build: .
-    container_name: exfil-web
-    ports:
-      - "8080:8080"
-    volumes:
-      - shared-data:/app/data
-      - ./logs:/app/logs
-    command: python web_dashboard.py --host 0.0.0.0
-    depends_on:
-      - detector
-    restart: unless-stopped
-
-  # API service
-  api:
-    build: .
-    container_name: exfil-api
-    ports:
-      - "8000:8000"
-    volumes:
-      - shared-data:/app/data
-      - ./logs:/app/logs
-    command: python api_service.py --host 0.0.0.0
-    depends_on:
-      - detector
-    restart: unless-stopped
-
 volumes:
-  shared-data:  # Shared volume for communication between services 
+  shared-data: 
