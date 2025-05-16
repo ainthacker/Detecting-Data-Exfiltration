@@ -16,7 +16,7 @@ Data Exfiltration Detector is a powerful tool designed to monitor network traffi
 - **Advanced Protocol Tunneling Detection**:
   - **DNS Tunneling Detection**: Identifies data exfiltration via DNS protocol
   - **ICMP Tunneling Detection**: Detects covert channels using ICMP protocol
-- **Various Data Exfiltration Detection**: Detection of multiple data exfiltration techniques:
+- **Various Data Exfiltration Detection**: Detection of multiple data exfiltration techniques;
   - Large data transfers
   - Unusual port communications
   - Sensitive data pattern detection
