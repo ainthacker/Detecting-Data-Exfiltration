@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Data Exfiltration Detector</title>
+    <link rel="stylesheet" href="{{ request.url_for('static', path='css/styles.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+    <style>
+        .mode-switcher {
+            display: flex;
+            gap: 5px;
+            margin-left: 10px;
+        }
+        .mode-btn {
+            font-size: 0.8rem;
+            padding: 0.3rem 0.5rem;
+            background-color: #546e7a;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        .mode-btn:hover {
+            background-color: #455a64;
+        }
+        #interface {
+            width: 300px;
+        }
+        /* Tünel Tespiti panel stilleri - modernize edilmiş versiyon */
+        .tunnel-stats {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        .tunnel-stat-box {
+            flex: 1;
+            min-width: 120px;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-radius: 8px;
+            padding: 15px;
+            box-shadow: 0 3px 6px rgba(0,0,0,0.1);
+            transition: all 0.3s ease;
+            border-left: 4px solid #3498db;
+            position: relative;
+            overflow: hidden;
+        }
+        .tunnel-stat-box:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+        }
+        .tunnel-stat-box::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 30px;
+            height: 30px;
+            background-color: rgba(52, 152, 219, 0.1);
+            border-radius: 0 0 0 30px;
+        }
+        .dns-stat-box {
+            border-left-color: #3498db; /* DNS için mavi */
+        }
+        .dns-stat-box::after {
+            background-color: rgba(52, 152, 219, 0.1);
+        }
+        .icmp-stat-box {
+            border-left-color: #9b59b6; /* ICMP için mor */
+        }
+        .icmp-stat-box::after {
+            background-color: rgba(155, 89, 182, 0.1);
+        }
+        .tunnel-stat-title {
+            font-size: 0.85rem;
+            color: #596275;
+            margin-bottom: 8px;
+            font-weight: 500;
+            letter-spacing: 0.3px;
+        }
+        .tunnel-stat-value {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #2c3e50;
+            display: flex;
+            align-items: center;
+        }
+        .tunnel-stat-value::before {
+            content: '';
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: #3498db;
+            margin-right: 8px;
+        }
+        .tunnel-stat-box.suspicious .tunnel-stat-value::before {
+            background-color: #e74c3c;
+        }
+        .tunnel-tabs {
+            display: flex;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            overflow: hidden;
+            background-color: #f0f2f5;
+            padding: 3px;
+            position: relative;
+            border: none;
+        }
+        .tunnel-tab {
+            padding: 10px 20px;
+            background-color: transparent;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            color: #596275;
+            transition: all 0.3s ease;
+            position: relative;
+            z-index: 1;
+            flex: 1;
+            text-align: center;
+        }
+        .tunnel-tab.active {
+            color: #fff;
+            background-color: transparent;
+            font-weight: 600;
+        }
+        .tunnel-tab-slider {
+            position: absolute;
+            top: 3px;
+            left: 3px;
+            bottom: 3px;
+            width: calc(50% - 3px);
+            background: linear-gradient(to right, #3498db, #2980b9);
+            border-radius: 6px;
+            transition: all 0.3s ease;
+            z-index: 0;
+        }
+        .tunnel-tab:last-child.active ~ .tunnel-tab-slider {
+            left: calc(50% + 3px);
+            background: linear-gradient(to right, #9b59b6, #8e44ad);
+        }
+        .tunnel-panel {
+            display: none;
+            animation: fadeIn 0.3s ease;
+        }
+        .tunnel-panel.active {
+            display: block;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(5px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .tunnel-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+        }
+        .tunnel-table thead {
+            background: linear-gradient(to right, #34495e, #2c3e50);
+            color: white;
+        }
+        .tunnel-table th {
+            padding: 12px 15px;
+            text-align: left;
+            font-weight: 500;
+            font-size: 0.9rem;
+            color: white;
+        }
+        .tunnel-table td {
+            padding: 10px 15px;
+            border-bottom: 1px solid #eef0f5;
+            font-size: 0.9rem;
+        }
+        .tunnel-table tbody tr:last-child td {
+            border-bottom: none;
+        }
+        .tunnel-table tbody tr:hover {
+            background-color: rgba(52, 152, 219, 0.05);
+        }
+        .level-high {
+            color: #e74c3c;
+            font-weight: bold;
+            display: inline-block;
+            padding: 2px 8px;
+            background-color: rgba(231, 76, 60, 0.1);
+            border-radius: 4px;
+        }
+        .level-medium {
+            color: #f39c12;
+            display: inline-block;
+            padding: 2px 8px;
+            background-color: rgba(243, 156, 18, 0.1);
+            border-radius: 4px;
+        }
+        .level-low {
+            color: #3498db;
+            display: inline-block;
+            padding: 2px 8px;
+            background-color: rgba(52, 152, 219, 0.1);
+            border-radius: 4px;
+        }
+        .empty-alert-message {
+            text-align: center;
+            padding: 30px;
+            color: #7f8c8d;
+            font-style: italic;
+        }
+        /* Ana sekme navigasyonu */
+        .main-tabs {
+            display: none; /* eski değeri */
+        }
+        
+        /* Main-panel gösterim/gizleme stilleri */
+        .main-panel {
+            display: none;
+            animation: fadeIn 0.4s ease-in-out;
+        }
+        
+        .main-panel.active {
+            display: block;
+        }
+        
+        /* Sidebar navigasyon */
+        .sidebar {
+            position: fixed;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 150px;
+            background-color: #34495e;
+            z-index: 1000;
+            overflow-y: auto;
+            color: white;
+        }
+        
+        .sidebar-header {
+            padding: 15px 10px;
+            background: #2c3e50;
+            color: white;
+            font-weight: 600;
+            text-align: center;
+        }
+        
+        .sidebar-header h1 {
+            font-size: 1.1rem;
+            margin: 0;
+            line-height: 1.3;
+        }
+        
+        .nav-title {
+            color: #bdc3c7;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            padding: 10px;
+            margin-top: 0;
+            background-color: #34495e;
+            letter-spacing: 1px;
+            font-weight: 600;
+            text-align: center;
+        }
+        
+        .nav-item {
+            display: block;
+            padding: 12px 15px;
+            color: #ecf0f1;
+            text-decoration: none;
+            border: none;
+            margin: 0;
+            transition: all 0.2s;
+            cursor: pointer;
+            background: #34495e;
+            width: 100%;
+            text-align: left;
+            display: flex;
+            align-items: center;
+            font-size: 0.9rem;
+            border-left: 3px solid transparent;
+        }
+        
+        .nav-item:hover {
+            background-color: #2c3e50;
+        }
+        
+        .nav-item.active {
+            background-color: #3498db;
+            color: #ffffff;
+            font-weight: 600;
+            border-left: 3px solid #2980b9;
+        }
+        
+        .nav-item i {
+            margin-right: 10px;
+            width: 18px;
+            text-align: center;
+            font-size: 0.95rem;
+        }
+        
+        .nav-item.active i {
+            color: #3498db;
+        }
+        
+        .soon-badge {
+            font-size: 0.65rem;
+            background-color: #7f8c8d;
+            color: white;
+            border-radius: 4px;
+            padding: 2px 5px;
+            margin-left: 5px;
+        }
+        
+        .day-section {
+            background-color: #34495e;
+            color: #ecf0f1;
+            padding: 5px 10px;
+            font-size: 0.8rem;
+            text-align: center;
+            font-weight: 600;
+        }
+        
+        .day-section.light {
+            background-color: #ecf0f1;
+            color: #95a5a6;
+            border-top: 1px solid #bdc3c7;
+            border-bottom: 1px solid #bdc3c7;
+        }
+        
+        /* Ana içerik alanını sidebar'a göre ayarla */
+        .main-content {
+            margin-left: 150px;
+            padding: 20px;
+            background-color: #f5f7fa;
+            min-height: 100vh;
+        }
+        .main-content-container {
+            margin-left: 10px; /* Sidebar genişliği kadar sol boşluk */
+            padding: 20px;
+        }
+        .widget {
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.05);
+            padding: 1.2rem;
+            overflow: hidden;
+            margin-bottom: 20px;
+            transition: all 0.3s ease;
+        }
+        .widget:hover {
+            box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+        }
+        .widget h2 {
+            margin-top: 0;
+            font-size: 1.25rem;
+            color: #2c3e50;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 0.75rem;
+            margin-bottom: 1rem;
+            font-weight: 600;
+        }
+        /* Aktivite göstergeleri */
+        .activity-indicator {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 12px;
+            background-color: #f8fafc;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            font-size: 0.9rem;
+        }
+        .activity-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 8px;
+            display: inline-block;
+        }
+        .activity-status {
+            display: flex;
+            align-items: center;
+        }
+        .activity-status.active .activity-dot {
+            background-color: #4caf50;
+            box-shadow: 0 0 6px rgba(76, 175, 80, 0.5);
+        }
+        .activity-status.inactive .activity-dot {
+            background-color: #9e9e9e;
+        }
+        .activity-time {
+            color: #64748b;
+            font-size: 0.85rem;
+        }
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+        .control-group label {
+            font-size: 0.85rem;
+            white-space: nowrap;
+        }
+        .control-group select {
+            padding: 0.4rem;
+            border: none;
+            border-radius: 4px;
+            background-color: rgba(255,255,255,0.9);
+            min-width: 190px;
+        }
+        .control-item {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            font-size: 0.85rem;
+        }
+        .control-item label {
+            white-space: nowrap;
+        }
+        .button-group {
+            margin-left: auto;
+            display: flex;
+            gap: 0.4rem;
+        }
+    </style>
+</head>
+<body>
+    <!-- Sidebar Navigasyon -->
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <h1>Data Exfil<br>Detector</h1>
+        </div>
+        
+        <button class="nav-item active" id="trafficTabBtn">
+            <i class="fas fa-chart-bar"></i> Traffic Analysis
+        </button>
+        <button class="nav-item" id="tunnelingTabBtn">
+            <i class="fas fa-route"></i> Tunneling
+        </button>
+        <button class="nav-item" id="alertsTabBtn">
+            <i class="fas fa-exclamation-triangle"></i> Alerts
+        </button>
+        
+        <button class="nav-item" title="Bu özellik yakında eklenecek">
+            <i class="fas fa-user-shield"></i> Access <span class="soon-badge">Coming Soon</span>
+        </button>
+    </div>
+    
+    <!-- Ana içerik -->
+    <div class="main-content">
+        <header>
+            <div class="controls">
+                <div class="control-group">
+                    <label for="interface">Interface:</label>
+                    <select id="interface">
+                        <option value="">Yükleniyor...</option>
+                    </select>
+                </div>
+                <div class="control-item">
+                    <label for="pcap">PCAP File:</label>
+                    <button type="button" id="browsePcap">Browse</button>
+                    <input type="file" id="pcapFileInput" accept=".pcap,.pcapng" style="display:none;">
+                    <span id="selectedFileName"></span>
+                </div>
+                <div class="control-item">
+                    <button type="button" id="liveModeBtn" class="mode-btn" title="Use Live Capture Mode">Live Mode</button>
+                </div>
+                <div class="button-group">
+                    <button id="startBtn" class="primary">Start Capture</button>
+                    <button id="stopBtn" class="danger" disabled>Stop Capture</button>
+                </div>
+            </div>
+        </header>
+        
+        <main>
+            <div class="dashboard">
+                <!-- Ana navigasyon barı --> 
+            </div>
+            
+            <!-- Main content area -->
+            <div class="main-content-container">
+                <!-- Ana sekme 1: Traffic Analysis (Default açık sekme) -->
+                <div class="main-panel active" id="trafficPanel">
+                    <!-- Status ve Traffic Statistics burada gösterilsin -->
+                    <div class="widget status">
+                        <h2>Status</h2>
+                        <div class="status-indicator">
+                            <span id="statusDot"></span>
+                            <span id="statusText">Stopped</span>
+                        </div>
+                        <div class="stats">
+                            <div class="stat-item">
+                                <strong>Packets:</strong>
+                                <span id="packetCount">0</span>
+                            </div>
+                            <div class="stat-item">
+                                <strong>Duration:</strong>
+                                <span id="duration">00:00:00</span>
+                            </div>
+                            <div class="stat-item">
+                                <strong>Mode:</strong>
+                                <span id="mode">Live</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="widget traffic">
+                        <h2>Traffic Statistics</h2>
+                        <div class="traffic-chart-container">
+                            <canvas id="trafficChart"></canvas>
+                        </div>
+                        <div class="stats-row">
+                            <div class="stat-box">
+                                <div class="stat-title">Total Data</div>
+                                <div class="stat-value" id="totalData">0 B</div>
+                            </div>
+                            <div class="stat-box">
+                                <div class="stat-title">Internal Traffic</div>
+                                <div class="stat-value" id="internalData">0 B</div>
+                            </div>
+                            <div class="stat-box">
+                                <div class="stat-title">External Traffic</div>
+                                <div class="stat-value" id="externalData">0 B</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="widget toptalkers">
+                        <h2>Top Talkers</h2>
+                        <div class="table-container">
+                            <table id="talkersTable">
+                                <thead>
+                                    <tr>
+                                        <th>Source IP</th>
+                                        <th>Destination IP</th>
+                                        <th>Data Volume</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- Filled by JavaScript -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    
+                    <div class="widget destinations">
+                        <h2>Top Destinations</h2>
+                        <div class="table-container">
+                            <table id="destinationsTable">
+                                <thead>
+                                    <tr>
+                                        <th>Destination IP</th>
+                                        <th>Data Volume</th>
+                                        <th>Type</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- Filled by JavaScript -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Ana sekme 2: Tunneling Detection -->
+                <div class="main-panel" id="tunnelingPanel">
+                    <!-- Tunneling Detection bölümünün BAŞLANGICI -->
+                    <div class="content-wrapper" id="tunneling-panel">
+                        <h2 class="section-title">Tunneling Detection</h2>
+                        
+                        <!-- RADAR DASHBOARD BAŞLANGICI -->
+                        <div class="radar-container">
+                            <h3 class="radar-title">Network Threat Radar</h3>
+                            <div class="radar-wrapper">
+                                <canvas id="radarScreen" width="400" height="400"></canvas>
+                                <div id="radarInfo" class="radar-info">
+                                    <div class="radar-stats">
+                                        <div class="radar-stat">
+                                            <span class="radar-label">Detected Threats:</span>
+                                            <span id="threatCount" class="radar-value">0</span>
+                                        </div>
+                                        <div class="radar-stat">
+                                            <span class="radar-label">Last Detection:</span>
+                                            <span id="lastDetection" class="radar-value">N/A</span>
+                                        </div>
+                                    </div>
+                                    <div id="detectedThreats" class="detected-threats">
+                                        <!-- Tespit edilen tehditler burada listelenir -->
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- RADAR DASHBOARD SONU -->
+                        
+                        <div class="tunnel-tabs">
+                            <button class="tunnel-tab active" data-panel="dns-panel">DNS Tunneling</button>
+                            <button class="tunnel-tab" data-panel="icmp-panel">ICMP Tunneling</button>
+                            <span class="tunnel-tab-slider"></span>
+                        </div>
+                        
+                        <div class="tunnel-panel dns-panel active">
+                            <div class="activity-indicator">
+                                <div class="activity-status active">
+                                    <span class="activity-dot"></span>
+                                    <span>DNS Tunneling is being monitored.</span>
+                                </div>
+                                <div class="activity-time">Last Update: <span id="dnsLastUpdate">Now</span></div>
+                            </div>
+                            <div class="tunnel-stats">
+                                <div class="tunnel-stat-box dns-stat-box">
+                                    <div class="tunnel-stat-title">Total DNS Queries</div>
+                                    <div class="tunnel-stat-value" id="dnsTotalQueries">0</div>
+                                </div>
+                                <div class="tunnel-stat-box dns-stat-box suspicious">
+                                    <div class="tunnel-stat-title">Suspicious Entropy</div>
+                                    <div class="tunnel-stat-value" id="dnsEntropyQueries">0</div>
+                                </div>
+                                <div class="tunnel-stat-box dns-stat-box suspicious">
+                                    <div class="tunnel-stat-title">Long Subdomains</div>
+                                    <div class="tunnel-stat-value" id="dnsLongSubdomains">0</div>
+                                </div>
+                                <div class="tunnel-stat-box dns-stat-box suspicious">
+                                    <div class="tunnel-stat-title">Many Labels</div>
+                                    <div class="tunnel-stat-value" id="dnsManyLabels">0</div>
+                                </div>
+                            </div>
+                            <div class="table-container">
+                                <table class="tunnel-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Time</th>
+                                            <th>Level</th>
+                                            <th>Message</th>
+                                            <th>Source IP</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="dnsAlertTable">
+                                        <!-- DNS Tünelleme alarmları JavaScript ile burada gösterilecek -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        
+                        <div class="tunnel-panel icmp-panel">
+                            <div class="activity-indicator">
+                                <div class="activity-status active">
+                                    <span class="activity-dot"></span>
+                                    <span>ICMP Tunneling is being monitored</span>
+                                </div>
+                                <div class="activity-time">Last update: <span id="icmpLastUpdate">Now</span></div>
+                            </div>
+                            <div class="tunnel-stats">
+                                <div class="tunnel-stat-box icmp-stat-box">
+                                    <div class="tunnel-stat-title">Total ICMP Packets</div>
+                                    <div class="tunnel-stat-value" id="icmpTotalPackets">0</div>
+                                </div>
+                                <div class="tunnel-stat-box icmp-stat-box suspicious">
+                                    <div class="tunnel-stat-title">Large Payload</div>
+                                    <div class="tunnel-stat-value" id="icmpLargePayload">0</div>
+                                </div>
+                                <div class="tunnel-stat-box icmp-stat-box suspicious">
+                                    <div class="tunnel-stat-title">Abnormal Echo Ratio</div>
+                                    <div class="tunnel-stat-value" id="icmpAbnormalRatio">0</div>
+                                </div>
+                                <div class="tunnel-stat-box icmp-stat-box suspicious">
+                                    <div class="tunnel-stat-title">High Frequency</div>
+                                    <div class="tunnel-stat-value" id="icmpHighFreq">0</div>
+                                </div>
+                            </div>
+                            <div class="table-container">
+                                <table class="tunnel-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Time</th>
+                                            <th>Level</th>
+                                            <th>Message</th>
+                                            <th>Source IP</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="icmpAlertTable">
+                                        <!-- ICMP Tünelleme alarmları JavaScript ile burada gösterilecek -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Ana sekme 3: Alerts -->
+                <div class="main-panel" id="alertsPanel">
+                    <div class="widget alerts">
+                        <h2>Recent Alerts</h2>
+                        <div class="filter-row">
+                            <label for="alertLevel">Level:</label>
+                            <select id="alertLevel">
+                                <option value="all">All</option>
+                                <option value="high">High</option>
+                                <option value="medium">Medium</option>
+                                <option value="low">Low</option>
+                            </select>
+                            <label for="alertTime">Time:</label>
+                            <select id="alertTime">
+                                <option value="all">All</option>
+                                <option value="5m">Last 5 min</option>
+                                <option value="1h">Last 1 hour</option>
+                                <option value="today">Today</option>
+                                <option value="custom">Custom</option>
+                            </select>
+                            <label for="alertStart">Start:</label>
+                            <input type="datetime-local" id="alertStart">
+                            <label for="alertEnd">End:</label>
+                            <input type="datetime-local" id="alertEnd">
+                        </div>
+                        <div class="table-container">
+                            <table id="alertsTable">
+                                <thead>
+                                    <tr>
+                                        <th>Time</th>
+                                        <th>Level</th>
+                                        <th>Message</th>
+                                        <th>IP</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- Filled by JavaScript -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+        
+        <footer>
+            <p>Data Exfiltration Detector &copy; 2025</p>
+        </footer>
+    </div>
+    
+    <script src="{{ request.url_for('static', path='js/dashboard.js') }}"></script>
+<script src="{{ request.url_for('static', path='js/app.js') }}"></script>
+</body>
+</html>
